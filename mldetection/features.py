@@ -1,5 +1,5 @@
 from __future__ import annotations
-import pathlib, pandas as pd
+import gzip, pandas as pd, pathlib
 
 __all__ = [
     "NUMERIC",
@@ -21,12 +21,19 @@ CATEGORICAL = [
 ]
 
 def read_file(path: pathlib.Path) -> pd.DataFrame:
-    with open(path, "rb") as fh:
+    # choose text or binary opener depending on .gz
+    opener_bin  = gzip.open if path.suffix == ".gz" else open
+    opener_text = gzip.open if path.suffix == ".gz" else open
+
+    with opener_bin(path, "rb") as fh:
         first = fh.readline().lstrip()
-    if first.startswith(b"{"):        
-        return pd.read_json(path, lines=True, compression="infer")
-    with path.open("r", encoding="utf-8", errors="ignore") as fh:
-        return pd.read_csv(fh, sep="\t", comment="#", low_memory=False)
+
+    if first.startswith(b"{"):                     # JSON (Zeek with @load json-logs)
+        with opener_text(path, "rt", encoding="utf-8", errors="ignore") as fh:
+            return pd.read_json(fh, lines=True)
+    else:                                          # TSV
+        with opener_text(path, "rt", encoding="utf-8", errors="ignore") as fh:
+            return pd.read_csv(fh, sep="\t", comment="#", low_memory=False)
 
 
 def add_features(df: pd.DataFrame) -> None:
