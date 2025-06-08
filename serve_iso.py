@@ -37,10 +37,13 @@ for raw in ssh_tail(HOST, USER, PASS, REMOTE_FILE):
         row = orjson.loads(raw)
     except ValueError:
         continue
-    df = pd.DataFrame([row]); add_features(df)
-    required = {"bytes_ratio", "pkts_total"}.issubset(df.columns) and df.notna().all().all()
-    if not required:
-        continue   # skip rows missing critical features
+
+    df = pd.DataFrame([row])
+    add_features(df)
+
+    required_cols = set(NUMERIC + CATEGORICAL)
+    if not required_cols.issubset(df.columns) or df[required_cols].isna().any(axis=None):
+        continue                      # skip incomplete rows
 
     score = pipe.decision_function(df[NUMERIC + CATEGORICAL])[0]
     if score < THRESH:
