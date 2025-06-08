@@ -1,0 +1,8 @@
+pandas
+pyarrow
+scikit-learn
+joblib
+paramiko
+python-dotenv
+tqdm
+orjson
