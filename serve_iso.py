@@ -2,7 +2,8 @@
 from __future__ import annotations
 import os, time, paramiko, orjson, pandas as pd, pathlib, joblib
 from mldetection.features import NUMERIC, CATEGORICAL, add_features
-
+import requests, json, datetime as dt, os, itertools, time
+from requests.exceptions import RequestException
 # env vars (required)
 from dotenv import load_dotenv
 load_dotenv()
@@ -14,6 +15,18 @@ THRESH = float(os.getenv("IDS_THRESHOLD", "-0.15"))
 
 MODEL_PATH = pathlib.Path("ids_iso.joblib")
 pipe = joblib.load(MODEL_PATH)
+ES_URL = os.getenv("ES_URL")          # e.g. https://elk:9200
+ES_API = os.getenv("ES_API_KEY")      # base64 api key
+ES_USER = os.getenv("ES_USER")
+ES_PASS = os.getenv("ES_PASS")
+IDX_PREFIX = "mlids"   
+headers = {"Content-Type": "application/json"}
+if ES_API:
+    headers["Authorization"] = f"ApiKey {ES_API}"
+
+
+def backoff():
+    yield from (0, 1, 2, 4, 8, 16, 16, 16)
 
 def ssh_tail(host: str, user: str, pwd: str, remote_file: str):
     cli = paramiko.SSHClient()
@@ -31,6 +44,27 @@ def ssh_tail(host: str, user: str, pwd: str, remote_file: str):
                 yield line.decode(errors="ignore")
         else:
             time.sleep(0.2)
+
+def send_to_es(doc: dict):
+    index = f"{IDX_PREFIX}-{datetime.date.today():%Y.%m.%d}"
+    url   = f"{ES_URL}/{index}/_doc"
+    payload = json.dumps(doc).encode()
+
+    for delay in backoff():
+        try:
+            if delay:
+                time.sleep(delay)
+            r = requests.post(
+                url, data=payload, headers=headers,
+                auth=(ES_USER, ES_PASS) if ES_USER else None,
+                timeout=3, verify=True  # set verify=False only for a self-signed lab cert
+            )
+            r.raise_for_status()
+            return
+        except RequestException as e:
+            # Log locally, then retry; final failure just drops the alert
+            print(f"ES post failed ({e}); retry in {delay}s", file=sys.stderr)
+    print("dropped alert after retries", file=sys.stderr)
 
 for raw in ssh_tail(HOST, USER, PASS, REMOTE_FILE):
     try:
@@ -52,6 +86,17 @@ for raw in ssh_tail(HOST, USER, PASS, REMOTE_FILE):
 
     score = pipe.decision_function(df[NUMERIC + CATEGORICAL])[0]
     if score < THRESH:
-        print(f"ALERT ts={row.get('ts')} uid={row.get('uid')} "
-              f"{row.get('id.orig_h')}->{row.get('id.resp_h')} score={score:.2f}",
-              flush=True)
+        
+        ALERT = {
+            "ts": row.get("ts"),
+            "uid": row.get("uid"),
+            "src": row.get("id.orig_h"),
+            "src_p": row.get("id.orig_p"),
+            "dst": row.get("id.resp_h"),
+            "dst_p": row.get("id.resp_p"),
+            "proto": row.get("proto"),
+            "score": score,
+}
+
+        send_to_es(ALERT)               # ⇦ pushes to Elasticsearch
+        print(json.dumps(ALERT)) 
