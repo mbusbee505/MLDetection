@@ -23,9 +23,11 @@ CATEGORICAL = [
 def read_file(path: pathlib.Path) -> pd.DataFrame:
     with open(path, "rb") as fh:
         first = fh.readline().lstrip()
-    if first.startswith(b"{"):
-        return pd.read_json(path, lines=True)
-    return pd.read_csv(path, sep="\t", comment="#", low_memory=False)
+    if first.startswith(b"{"):        
+        return pd.read_json(path, lines=True, compression="infer")
+    with path.open("r", encoding="utf-8", errors="ignore") as fh:
+        return pd.read_csv(fh, sep="\t", comment="#", low_memory=False)
+
 
 def add_features(df: pd.DataFrame) -> None:
     df["hour"] = pd.to_datetime(df["ts"], unit="s").dt.hour
