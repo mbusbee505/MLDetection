@@ -37,9 +37,21 @@ def read_file(path: pathlib.Path) -> pd.DataFrame:
 
 
 def add_features(df: pd.DataFrame) -> None:
-    df["hour"] = pd.to_datetime(df["ts"], unit="s").dt.hour
-    df["bytes_ratio"] = (df["orig_bytes"] + 1) / (df["resp_bytes"] + 1)
-    df["pkts_total"] = df["orig_pkts"] + df["resp_pkts"]
+    if {"orig_bytes", "resp_bytes"}.issubset(df.columns):
+        df["bytes_ratio"] = (df["orig_bytes"].fillna(0) + 1) / (
+            df["resp_bytes"].fillna(0) + 1
+        )
+    else:
+        # mark as unprocessable; scorer will skip it
+        df["bytes_ratio"] = pd.NA
+
+    if {"orig_pkts", "resp_pkts"}.issubset(df.columns):
+        df["pkts_total"] = df["orig_pkts"].fillna(0) + df["resp_pkts"].fillna(0)
+    else:
+        df["pkts_total"] = pd.NA
+
+    df["hour"] = pd.to_datetime(df.get("ts", pd.NA), unit="s", errors="coerce").dt.hour
+
 
 NUMERIC_EXT = NUMERIC + ["bytes_ratio", "pkts_total", "hour"]
 

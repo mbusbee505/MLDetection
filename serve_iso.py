@@ -38,6 +38,10 @@ for raw in ssh_tail(HOST, USER, PASS, REMOTE_FILE):
     except ValueError:
         continue
     df = pd.DataFrame([row]); add_features(df)
+    required = {"bytes_ratio", "pkts_total"}.issubset(df.columns) and df.notna().all().all()
+    if not required:
+        continue   # skip rows missing critical features
+
     score = pipe.decision_function(df[NUMERIC + CATEGORICAL])[0]
     if score < THRESH:
         print(f"ALERT ts={row.get('ts')} uid={row.get('uid')} "
