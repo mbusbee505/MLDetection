@@ -41,9 +41,10 @@ for raw in ssh_tail(HOST, USER, PASS, REMOTE_FILE):
     df = pd.DataFrame([row])
     add_features(df)
 
-    required_cols = set(NUMERIC + CATEGORICAL)
-    if not required_cols.issubset(df.columns) or df[required_cols].isna().any(axis=None):
-        continue                      # skip incomplete rows
+    required_cols = NUMERIC + CATEGORICAL          # a list, not a set
+    have_all_cols = set(required_cols).issubset(df.columns)
+    if not have_all_cols or df[required_cols].isna().any(axis=None):
+        continue                    # skip incomplete rows
 
     score = pipe.decision_function(df[NUMERIC + CATEGORICAL])[0]
     if score < THRESH:
