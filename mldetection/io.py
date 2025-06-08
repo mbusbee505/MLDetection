@@ -34,12 +34,16 @@ if not all([_ZEEK_HOST, _ZEEK_USER, _ZEEK_PASS]):
     )
 
 
-def _fetch_file(sftp: paramiko.SFTPClient, rfile: str, lfile: pathlib.Path):
+def _fetch_file(sftp, rfile: str, lfile: pathlib.Path):
     if rfile.endswith(".gz"):
-        with sftp.open(rfile, "rb") as rf, gzip.open(rf) as gz, lfile.open("wb") as lf:
+        target = lfile.with_suffix("")               # remove .gz
+        if target.suffix == ".gz":                   # handles .log.gz → .log
+            target = target.with_suffix("")
+        with sftp.open(rfile, "rb") as rf, gzip.open(rf) as gz, target.open("wb") as lf:
             shutil.copyfileobj(gz, lf)
     else:
         sftp.get(rfile, str(lfile))
+
 
 
 def _copy_dir(sftp: paramiko.SFTPClient, rpath: str, lpath: pathlib.Path):
